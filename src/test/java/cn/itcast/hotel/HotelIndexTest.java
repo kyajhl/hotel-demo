@@ -8,6 +8,7 @@ import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.client.indices.CreateIndexRequest;
 import org.elasticsearch.client.indices.GetIndexRequest;
 import org.elasticsearch.common.xcontent.XContentType;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,7 @@ class HotelIndexTest {
 
     private RestHighLevelClient client;
 
+    // 创建索引库
     @Test
     void testCreateIndex() throws IOException {
         // 1.准备Request      PUT /hotel
@@ -32,6 +34,7 @@ class HotelIndexTest {
         client.indices().create(request, RequestOptions.DEFAULT);
     }
 
+    // 判断索引库是否存在
     @Test
     void testExistsIndex() throws IOException {
         // 1.准备Request
@@ -39,9 +42,10 @@ class HotelIndexTest {
         // 3.发送请求
         boolean isExists = client.indices().exists(request, RequestOptions.DEFAULT);
 
-        System.out.println(isExists ? "存在" : "不存在");
+        System.out.println(isExists ? "索引库存在" : "索引库不存在");
     }
 
+    // 删除索引库
     @Test
     void testDeleteIndex() throws IOException {
         // 1.准备Request
@@ -51,17 +55,19 @@ class HotelIndexTest {
     }
 
 
+    // 在每个测试方法执行前都会执行这个方法
     @BeforeEach
     void setUp() {
+        // client 初始化
         client = new RestHighLevelClient(RestClient.builder(
                 HttpHost.create("http://192.168.65.128:9200")
         ));
     }
 
+    // 在每个测试方法执行后都会执行这个方法
     @AfterEach
     void tearDown() throws IOException {
+        // 销毁 client
         client.close();
     }
-
-
 }
