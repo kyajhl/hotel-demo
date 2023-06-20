@@ -54,7 +54,6 @@ class HotelIndexTest {
         client.indices().delete(request, RequestOptions.DEFAULT);
     }
 
-
     // 在每个测试方法执行前都会执行这个方法
     @BeforeEach
     void setUp() {
