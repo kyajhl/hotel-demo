@@ -151,7 +151,7 @@ public class HotelService extends ServiceImpl<HotelMapper, Hotel> implements IHo
     @Override
     public void deleteById(Long hotelId) {
         try {
-            // 1.创建request
+            // 1.创建 request
             DeleteRequest request = new DeleteRequest("hotel", hotelId.toString());
             // 2.发送请求
             client.delete(request, RequestOptions.DEFAULT);
@@ -163,12 +163,12 @@ public class HotelService extends ServiceImpl<HotelMapper, Hotel> implements IHo
     @Override
     public void saveById(Long hotelId) {
         try {
-            // 查询酒店数据，应该基于Feign远程调用hotel-admin，根据id查询酒店数据（现在直接去数据库查）
+            // 查询酒店数据，应该基于 Feign 远程调用 hotel-admin，根据id查询酒店数据（现在直接去数据库查）
             Hotel hotel = getById(hotelId);
             // 转换
             HotelDoc hotelDoc = new HotelDoc(hotel);
 
-            // 1.创建Request
+            // 1.创建 Request
             IndexRequest request = new IndexRequest("hotel").id(hotelId.toString());
             // 2.准备参数
             request.source(JSON.toJSONString(hotelDoc), XContentType.JSON);
