@@ -9,27 +9,38 @@ import cn.itcast.hotel.service.IHotelService;
 import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import org.elasticsearch.action.delete.DeleteRequest;
+import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.geo.GeoPoint;
 import org.elasticsearch.common.unit.DistanceUnit;
+import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.query.functionscore.FunctionScoreQueryBuilder;
 import org.elasticsearch.index.query.functionscore.ScoreFunctionBuilders;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
+import org.elasticsearch.search.aggregations.AggregationBuilders;
+import org.elasticsearch.search.aggregations.Aggregations;
+import org.elasticsearch.search.aggregations.bucket.terms.Terms;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightField;
 import org.elasticsearch.search.sort.SortBuilders;
 import org.elasticsearch.search.sort.SortOrder;
+import org.elasticsearch.search.suggest.Suggest;
+import org.elasticsearch.search.suggest.SuggestBuilder;
+import org.elasticsearch.search.suggest.SuggestBuilders;
+import org.elasticsearch.search.suggest.completion.CompletionSuggestion;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -67,6 +78,128 @@ public class HotelService extends ServiceImpl<HotelMapper, Hotel> implements IHo
         } catch (IOException e) {
             throw new RuntimeException("搜索数据失败", e);
         }
+    }
+
+    @Override
+    public Map<String, List<String>> getFilters(RequestParams params) {
+        try {
+            // 1.准备请求
+            SearchRequest request = new SearchRequest("hotel");
+            // 2.请求参数
+            // 2.1.query
+            buildBasicQuery(params, request);
+            // 2.2.size
+            request.source().size(0);
+            // 2.3.聚合
+            buildAggregations(request);
+            // 3.发出请求
+            SearchResponse response = client.search(request, RequestOptions.DEFAULT);
+            // 4.解析结果
+            Aggregations aggregations = response.getAggregations();
+            Map<String, List<String>> filters = new HashMap<>(3);
+            // 4.1.解析品牌
+            List<String> brandList = getAggregationByName(aggregations, "brandAgg");
+            filters.put("brand", brandList);
+            // 4.1.解析城市
+            List<String> cityList = getAggregationByName(aggregations, "cityAgg");
+            filters.put("city", cityList);
+            // 4.1.解析星级
+            List<String> starList = getAggregationByName(aggregations, "starAgg");
+            filters.put("starName", starList);
+
+            return filters;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public List<String> getSuggestion(String key) {
+        try {
+            // 1.准备请求
+            SearchRequest request = new SearchRequest("hotel");
+            // 2.请求参数
+            request.source().suggest(new SuggestBuilder()
+                    .addSuggestion(
+                            "suggestions",
+                            SuggestBuilders
+                                    .completionSuggestion("suggestion")
+                                    .size(10)
+                                    .skipDuplicates(true)
+                                    .prefix(key)
+                    ));
+            // 3.发出请求
+            SearchResponse response = client.search(request, RequestOptions.DEFAULT);
+            // 4.解析
+            Suggest suggest = response.getSuggest();
+            // 4.1.根据名称获取结果
+            CompletionSuggestion suggestion = suggest.getSuggestion("suggestions");
+            // 4.2.获取options
+            List<String> list = new ArrayList<>();
+            for (CompletionSuggestion.Entry.Option option : suggestion.getOptions()) {
+                // 4.3.获取补全的结果
+                String str = option.getText().toString();
+                // 4.4.放入集合
+                list.add(str);
+            }
+            return list;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public void deleteById(Long hotelId) {
+        try {
+            // 1.创建request
+            DeleteRequest request = new DeleteRequest("hotel", hotelId.toString());
+            // 2.发送请求
+            client.delete(request, RequestOptions.DEFAULT);
+        } catch (IOException e) {
+            throw new RuntimeException("删除酒店数据失败", e);
+        }
+    }
+
+    @Override
+    public void saveById(Long hotelId) {
+        try {
+            // 查询酒店数据，应该基于Feign远程调用hotel-admin，根据id查询酒店数据（现在直接去数据库查）
+            Hotel hotel = getById(hotelId);
+            // 转换
+            HotelDoc hotelDoc = new HotelDoc(hotel);
+
+            // 1.创建Request
+            IndexRequest request = new IndexRequest("hotel").id(hotelId.toString());
+            // 2.准备参数
+            request.source(JSON.toJSONString(hotelDoc), XContentType.JSON);
+            // 3.发送请求
+            client.index(request, RequestOptions.DEFAULT);
+        } catch (IOException e) {
+            throw new RuntimeException("新增酒店数据失败", e);
+        }
+    }
+
+    private List<String> getAggregationByName(Aggregations aggregations, String aggName) {
+        // 4.1.根据聚合名称，获取聚合结果
+        Terms terms = aggregations.get(aggName);
+        // 4.2.获取buckets
+        List<? extends Terms.Bucket> buckets = terms.getBuckets();
+        // 4.3.遍历
+        List<String> list = new ArrayList<>(buckets.size());
+        for (Terms.Bucket bucket : buckets) {
+            String brandName = bucket.getKeyAsString();
+            list.add(brandName);
+        }
+        return list;
+    }
+
+    private void buildAggregations(SearchRequest request) {
+        request.source().aggregation(
+                AggregationBuilders.terms("brandAgg").field("brand").size(100));
+        request.source().aggregation(
+                AggregationBuilders.terms("cityAgg").field("city").size(100));
+        request.source().aggregation(
+                AggregationBuilders.terms("starAgg").field("starName").size(100));
     }
 
     private void buildBasicQuery(RequestParams params, SearchRequest request) {
